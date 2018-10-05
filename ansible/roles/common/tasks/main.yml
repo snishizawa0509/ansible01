@@ -1,0 +1,283 @@
+---
+# ========================================================
+# usersを追加
+# ========================================================z
+- name: usersを追加
+  user: name={{ item.name }} state=present password={{ item.password }} groups={{ item.groups }}
+  with_items: "{{users}}"
+  tags: users
+
+# ========================================================
+# sudoを許可
+# ========================================================z
+- name: sudoを許可
+  template: src=username.j2 dest=/etc/sudoers.d/{{ item }} owner=root group=root
+  with_items: "{{sudo_users}}"
+  tags: users
+
+# ========================================================
+# usersへSSH接続を許可
+# ========================================================z
+- name: .sshディレクトリ作成
+  file: dest=/home/{{item.name}}/.ssh/ state=directory owner={{item.name}} group={{item.name}} mode=700
+  with_items: "{{users}}"
+  tags: users
+
+- name: id_rsa.pubを転送
+  copy:
+    src: files/id_rsa.pub
+    dest: /home/{{main_user.name}}/.ssh/id_rsa.pub
+    follow: no
+    owner: "{{main_user.name}}"
+    group: "{{main_user.name}}"
+    mode: "600"
+  tags: users
+
+- name: authorized_keyを設定
+  authorized_key:
+    user: "{{ main_user.name }}"
+    state: present  #指定したkeyファイルを追加か削除かpresent:absent
+    key: "{{item}}" #"{{ lookup('file', 'files/id_rsa.pub') }}"
+  with_file:
+    - files/id_rsa.pub
+  tags: users
+
+# ========================================================
+# パッケージを更新
+# ========================================================z
+- name: yum update
+  yum:
+    name: "*"
+    state: latest
+
+# ========================================================
+# SELinuxをオフに
+# ========================================================z
+- name: SELinuxのDisable状態の確認
+  shell: "getenforce"
+  register: selinux_result
+  changed_when: false
+  check_mode: no
+
+- name: SELinuxのDisableでない場合サーバ再起動
+  shell: sleep 2 && shutdown -r now "サーバ再起動"
+  async: 1
+  poll: 0
+  #      ignore_errors: true
+  when: selinux_result.stdout != "Disabled"
+
+- name: SELinuxのDisableでない場合サーバ再起動待ち
+  local_action: wait_for host={{ inventory_hostname }} port=22 delay=10
+  when: selinux_result.stdout != "Disabled"
+
+
+# ========================================================
+# 不要なサービスの停止と自動起動をオフに
+# ========================================================z
+#- name: stop services
+#  service: name={{ item }} state=stopped
+#  with_items:
+#    - avahi-daemon
+#    - firewalld
+#    - postfix
+#  ignore_errors: true
+#- name: disable services
+#  service: name={{ item }} enabled=no
+#  with_items:
+#    - avahi-daemon
+#    - firewalld
+#    - postfix
+#  ignore_errors: true
+
+# ========================================================
+# EPELをインストール
+# ========================================================z
+- name: install EPEL
+  yum: name="epel-release" state=present
+  #yum: name="http://ftp.riken.jp/Linux/fedora/epel/epel-release-latest-7.noarch.rpm" state=present
+
+# ========================================================
+# ntpをインストール
+# ========================================================z
+- name: install ntp
+  yum: name=ntp state=present
+  tags: ntpd
+
+- name: enable ntp
+  service: name=ntpd enabled=yes
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: ntpd
+
+  #- name: stop ntpd
+  #  service: name=ntpd state=stopped
+  #  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  #  tags: ntpd
+  #
+  #- name: change ntp.conf
+  #  copy: src=ntp.conf dest=/etc/ntp.conf owner=root group=root
+  #  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  #  tags: ntpd
+  #
+  #- name: sync ntp.nict.jp
+  #  shell: /usr/sbin/ntpdate ntp.nict.jp
+  #  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  #  tags: ntpd
+  #
+  #- name: sync hwclock
+  #  shell: /sbin/hwclock -w
+  #  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  #  tags: ntpd
+
+- name: start ntpd
+  service: name=ntpd state=started
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: ntpd
+
+# ========================================================
+# サーバtimezone設定
+# ========================================================z
+- name: set timezone to Asia/Tokyo
+  timezone:
+    name: Asia/Tokyo
+
+# ========================================================
+# 色々パッケージを追加
+# ========================================================z
+- name: install packages
+  yum: name={{ item }} state=present
+  with_items:
+    - zip
+    - unzip
+    - wget
+    - git-svn
+    - vim
+
+# ========================================================
+# sudoでrootのPATHを継承する ##TODO fix
+# ========================================================z
+#- name: sudoでrootのPATHを継承
+#  lineinfile:
+#    dest: '/etc/sudoers'
+#    backrefs: yes
+#    regexp: '{{ item.regexp }}'
+#    line: '{{ item.line }}'
+#    backup: yes
+#  with_items:
+#    - {regexp: '^#(\s*)Defaults(\s+)env_keep(\s+)\+=(\s+)\"HOME\"$', line: 'Defaults    env_keep +=  "PATH"'}
+#    - {regexp: '^Defaults(\s*)secure_path(\s+)=(\s+)/sbin:/bin:/usr/sbin:/usr/bin$', line: '#Defaults    secure_path = /sbin:/bin:/usr/sbin:/usr/bin'}
+#  notify: sshd restart
+#  tags: sshd
+
+# ========================================================
+# sshd:パスワード認証の無効化
+# ========================================================z
+- name: パスワード認証の無効化
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^PasswordAuthentication"
+    insertafter: "^#PasswordAuthentication"
+    line: "PasswordAuthentication no"
+  notify: sshd restart
+  tags: sshd
+
+# ========================================================
+# sshd:チャレンジ・レスポンス認証の無効化
+# ========================================================z
+- name: チャレンジ・レスポンス認証の無効化
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^ChallengeResponseAuthentication"
+    insertafter: "^#ChallengeResponseAuthentication"
+    line: "ChallengeResponseAuthentication no"
+  notify: sshd restart
+  tags: sshd
+
+# ========================================================
+# sshd:rootユーザのログイン禁止
+# ========================================================z
+- name: rootユーザのログイン禁止
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^PermitRootLogin"
+    insertafter: "^#PermitRootLogin"
+    line: "PermitRootLogin no"
+  notify: sshd restart
+  tags: sshd
+
+# ========================================================
+# sshd:portの設定
+# ========================================================z
+- name: sshd:portの設定
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^Port"
+    insertafter: "^#Port"
+    line: "Port {{ ssh_port }}"
+  notify: sshd restart
+  tags: sshd
+
+# if firewall_set_type=='file'
+- name: ファイヤウォール　ファイルによる初期設定
+  template: src=iptables.j2 dest=/etc/sysconfig/iptables
+  notify: reload iptables
+  when: firewall_set_type == 'file' and (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: firewalld
+
+# else firewall_set_type=='command'
+
+# ========================================================
+# ファイヤウォール:port設定[SSH]
+# ========================================================z
+- name: ホストに対してSSHを許可する CentOS6
+  iptables:
+    action: append
+    chain: 'INPUT'
+    protocol: tcp
+    destination_port: "{{ ssh_port }}"
+    state: present
+    jump: ACCEPT
+    ctstate: NEW
+    source: "{{ host_ip }}"
+  notify:
+    - iptables save
+    - reload iptables
+  when:  firewall_set_type == "command" and (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: firewalld
+
+- name: ホストに対してSSHを許可する CentOS7  ##TODO fix
+  firewalld:
+    permanent: True
+    port: "{{ ssh_port }}"
+    state: present
+    source: "{{ host_ip }}"
+  notify: reload firewalld
+  when: firewall_set_type == "command" and (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")
+  tags: firewalld
+
+- name: ホスト以外の指定IPに対してSSHを許可する CentOS6
+  iptables:
+    action: append
+    chain: 'INPUT'
+    protocol: tcp
+    destination_port: "{{ ssh_port }}"
+    state: present
+    jump: ACCEPT
+    ctstate: NEW
+    source: "{{ item }}"
+  with_items: "{{allow_ssh_access_ips}}"
+  notify:
+    - iptables save
+    - reload iptables
+  when: firewall_set_type == "command" and (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: firewalld
+
+- name: ホストに以外の指定IPに対してSSHを許可する CentOS7 ##TODO fix
+  firewalld:
+    permanent: True
+    port: "{{ ssh_port }}"
+    state: present
+    source: "{{ host_ip }}"
+  notify: reload firewalld
+  with_items: "{{allow_ssh_access_ips}}"
+  when: firewall_set_type == "command" and (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")
+  tags: firewalld

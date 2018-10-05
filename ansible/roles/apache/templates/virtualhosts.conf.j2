@@ -1,0 +1,52 @@
+<VirtualHost *:80>
+  DocumentRoot {{ docroot }}
+  ServerName {{ hostname }}
+  RewriteEngine on
+#  RewriteCond %{HTTPS} !on
+#  RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R,L]
+
+  <Directory "{{ docroot }}">
+    Options FollowSymLinks
+    AllowOverride All
+    DirectoryIndex index.html index.htm index.php
+    Require all granted
+  </Directory>
+
+  SetEnv CAKE_ENV_MODE "{{ cake_env_mode }}"
+
+</VirtualHost>
+
+<VirtualHost *:443>
+  DocumentRoot {{ docroot }}
+  ServerName {{ hostname }}
+  <Directory "{{ docroot }}">
+    Options FollowSymLinks
+    AllowOverride All
+    DirectoryIndex index.html index.htm index.php
+    Require all granted
+  </Directory>
+
+  SetEnv CAKE_ENV_MODE "{{ cake_env_mode }}"
+
+  ErrorLog logs/ssl_error_log
+  TransferLog logs/ssl_access_log
+  LogLevel warn
+  SSLEngine off
+  SSLProtocol all -SSLv2 -SSLv3
+  SSLCipherSuite HIGH:MEDIUM:!aNULL:!MD5
+#  SSLCertificateFile /etc/letsencrypt/live/{{ hostname }}/cert.pem
+#  SSLCertificateKeyFile /etc/letsencrypt/live/{{ hostname }}/privkey.pem
+#  SSLCertificateChainFile /etc/letsencrypt/live/{{ hostname }}/chain.pem
+  BrowserMatch "MSIE [2-5]" \
+    nokeepalive ssl-unclean-shutdown \
+    downgrade-1.0 force-response-1.0
+  CustomLog logs/ssl_request_log \
+    "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+</VirtualHost>
+
+
+
+
+
+
+

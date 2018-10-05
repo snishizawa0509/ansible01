@@ -1,0 +1,15 @@
+# ドキュメントルートの所有ユーザ名
+main_username: lee
+main_password: lee
+docroot: /var/www/html
+dbroot: /var/opt/rh/rh-postgresql94/lib/pgsql
+db_user_name: postgres
+db_user_password: 1q2w3e
+###################  @추가실습
+db_name: ansible_std
+###########################
+permit_network: 10.0.0.0/8
+ssh_port: 22
+# 環境変数CAKE_ENV_MODEの設定値
+cake_env_mode: development
+hostname: lee.dev.jp

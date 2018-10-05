@@ -1,0 +1,13 @@
+# ========================================================
+# sshd
+# ========================================================z
+# ログインユーザ情報   ## パスワード= 'openssl passwd -1 hogehoge'
+main_user:
+  name: "towatech"
+  password: "$1$Id9Bdq7D$B7bNBQO.MaZP.XKXm.Hbl."
+  groups: "wheel"
+
+# ========================================================
+# firewalled iptables
+# ========================================================z
+firewall_set_type: "file" ## "command" or "file" file:ansible/roles/common/templates/iptables.j2

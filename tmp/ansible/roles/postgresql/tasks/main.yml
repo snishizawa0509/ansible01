@@ -1,0 +1,73 @@
+---
+# PostgreSQL9.4のリポジトリをインストール
+- name: install PostgreSQL9.4 repository
+  yum: name=http://yum.postgresql.org/9.4/redhat/rhel-7-x86_64/pgdg-centos94-9.4-2.noarch.rpm state=present
+- name: disable PostgreSQL9.4 repository
+  lineinfile: dest=/etc/yum.repos.d/pgdg-94-centos.repo regexp='^enabled=1' line='enabled=0' state=present
+# postgresql94のインストール
+- name: install postgresql94
+  yum: name={{ item }} enablerepo=pgdg94 state=present
+  with_items:
+  - postgresql94-server
+  - postgresql94-contrib
+  - python-psycopg2
+# データディレクトリを準備
+- name: make directory for dbroot 1
+  file: path={{ dbroot }} state=directory owner=postgres group=postgres mode=700
+- name: make directory for dbroot 2
+  file: path={{ dbroot }}/data state=directory owner=postgres group=postgres mode=700
+- name: make directory for dbroot 3
+  file: path={{ dbroot }}/backups state=directory owner=postgres group=postgres mode=700
+- name: copy postgresql-9.4.service
+  template: src=postgresql-9.4.service.j2 dest=/usr/lib/systemd/system/postgresql-9.4.service owner=root group=root mode=0644
+# 自動起動の設定
+- name: enable postgresql94
+  service: name=postgresql-9.4 enabled=yes
+# 設定済みかの確認
+- name: check postgresql.conf
+  command: test -f "{{ dbroot }}/data/postgresql.conf"
+  register: is_initialized
+  ignore_errors: true
+# 初期化
+- name: initdb
+  command: su postgres -c "/usr/pgsql-9.4/bin/initdb --no-locale --encoding=UTF8 -D {{ dbroot }}/data"
+  when: is_initialized|failed
+- name: config pg_hba.conf
+  template: src=pg_hba.conf.j2 dest={{ dbroot }}/data/pg_hba.conf
+  when: is_initialized|failed
+- name: config postgresql.conf
+  copy: src=postgresql.conf dest={{ dbroot }}/data/postgresql.conf
+  notify: restart postgresql94
+# サービス起動
+- name: start postgresql94
+  service: name=postgresql-9.4 state=started
+# postgresユーザのパスワード初期化
+- name: config postgres password
+  command: sudo -u postgres /usr/bin/psql -U postgres -c "ALTER USER {{ db_user_name }} with unencrypted password '{{ db_user_password }}';"
+  when: is_initialized|failed
+# アクセス方法をmd5に変更して再起動
+- name: config pg_hba.conf
+  template: src=pg_hba.conf2.j2 dest={{ dbroot }}/data/pg_hba.conf
+  notify: restart postgresql94
+# バックアップ設定
+- name: make dir backup
+  file: path=/home/{{ main_username }}/backup state=directory owner={{ main_username }} group={{ main_username }} mode=700
+- name: copy pgpass
+  template: src=pgpass dest=/home/{{ main_username }}/.pgpass owner={{ main_username }} group={{ main_username }} mode=0600
+- name: copy backup sh
+  template: src=backup_all.sh dest=/home/{{ main_username }}/backup_all.sh owner={{ main_username }} group={{ main_username }} mode=0600
+- name: set cron for db backup
+  cron:
+    name: 'db backup'
+    minute: '30'
+    hour:  '5'
+    job: 'source ~/.bash_profile; /bin/sh /home/{{ main_username }}/backup_all.sh;'
+    user: '{{ main_username }}'
+    cron_file: 'backup_all'
+###################  @추가실습
+# データベースを作成
+- name: create database
+  become: true
+  become_user: postgres
+  postgresql_db: name={{ db_name }} login_password={{db_user_password}} 
+##########################

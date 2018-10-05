@@ -1,0 +1,18 @@
+---
+##web_dbが一つのサーバに
+- name: web_db
+  # Ansible1.9からはsudo/suの代わりにbecomeを使う
+  become: true
+  environment:
+    PATH: "/opt:{{ env_path }}" ##sudoでパスが通らないのを解消
+  # webグループだけにタスクする
+  hosts: targets
+  remote_user: vagrant
+  vars_files:
+    - group_vars/all_together_common.yml
+    - group_vars/common.yml
+    - group_vars/web.yml
+    - group_vars/db.yml
+  roles:
+    - common
+    - apache

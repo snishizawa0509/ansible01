@@ -1,0 +1,13 @@
+---
+- name: web
+  # Ansible1.9からはsudo/suの代わりにbecomeを使う
+  become: true
+  # webグループだけにタスクする
+  hosts: web_group
+  user: vagrant
+  vars_files:
+    - vars.yml
+  roles:
+    - common
+    - apache
+    - php

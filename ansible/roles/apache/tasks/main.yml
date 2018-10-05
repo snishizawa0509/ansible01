@@ -1,0 +1,97 @@
+---
+# ========================================================
+# apacheをインストール
+# ========================================================z
+- name: apacheに関するyumインストール
+  yum: name={{ item }} state=present
+  with_items:
+    - httpd
+    - mod_ssl
+    - openssl
+    - openssl-devel
+    # - certbot #lets encryptを使う場合
+  tags: httpd
+
+# ========================================================
+# ポート開放
+# ========================================================z
+- name: iptables:HTTPポート開放 {{ http_port }}
+  lineinfile:
+    dest: /etc/sysconfig/iptables
+    line: "-A INPUT -m state --state NEW -m tcp -p tcp --dport {{ http_port }} -j ACCEPT"
+    insertafter: "^:OUTPUT "
+  notify: restart iptables
+  when: firewall_set_type == "command" and (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+
+- name: firewall:HTTPポート開放 {{ http_port }} #TODO fix
+  command: firewall-cmd --permanent --add-port={{ http_port }}/tcp
+  notify: restart firewalld
+  when: firewall_set_type == "command" and (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")
+
+# ========================================================
+# # docrootのディレクトリを作成
+# ========================================================z
+- name: ディレクトリを作成
+  file: path={{ item.root }} state=directory owner={{ item.owner }} group={{ item.owner }}
+  with_items: "{{ directories }}"
+  tags: httpd
+
+- name: ドキュメントルートディレクトリを作成
+  file: path={{ item.root }} state=directory owner={{ item.main_username }} group={{ item.main_username }}
+  with_items: "{{ documents }}"
+  tags: httpd
+
+# ========================================================
+# VirtualHostの設定
+# ========================================================z
+#- name: change virtualhosts.conf
+#  template: src=virtualhosts.conf.j2 dest=/etc/httpd/conf.d/virtualhosts.conf owner=root group=root mode=0644
+
+# ========================================================
+# VirtualHostの設定
+# ========================================================z
+
+# ここから https://gist.github.com/debility/8838906 を反映
+#- name: change httpd.conf 1
+#  lineinfile: dest=/etc/httpd/conf/httpd.conf regexp='^(\s*)Options\s.*FollowSymLinks' line='Options FollowSymLinks'
+#- name: change httpd.conf 2
+#  lineinfile: dest=/etc/httpd/conf/httpd.conf regexp='^(\s*)ServerTokens\s' line='ServerTokens Prod'
+#- name: change httpd.conf 3
+#  lineinfile: dest=/etc/httpd/conf/httpd.conf regexp='^(\s*ScriptAlias\s+/cgi-bin/.*)$' line='#\1' backrefs=yes
+#- name: change httpd.conf 4
+#  raw: sed -i
+#           -e '/^\s*<Directory "\/var\/www\/html">/,/^\s*<\/Directory>/s/^/#/'
+#           -e '/^\s*<Directory "\/var\/www\/cgi-bin">/,/^\s*<\/Directory>/s/^/#/'
+#           /etc/httpd/conf/httpd.conf
+#- name: disable autoindex.conf
+#  shell: if [ -f "/etc/httpd/conf.d/autoindex.conf" ]; then mv -f /etc/httpd/conf.d/autoindex.conf /etc/httpd/conf.d/autoindex.conf.orig; fi
+#- name: disable userdir.conf
+#  shell: if [ -f "/etc/httpd/conf.d/userdir.conf" ]; then mv -f /etc/httpd/conf.d/userdir.conf /etc/httpd/conf.d/userdir.conf.orig; fi
+#- name: disable welcome.conf
+#  shell: if [ -f "/etc/httpd/conf.d/welcome.conf" ]; then mv -f /etc/httpd/conf.d/welcome.conf /etc/httpd/conf.d/welcome.conf.orig; fi
+## ここから https://gist.github.com/debility/8838906 を反映
+#- name: change httpd.conf 5
+#  lineinfile: dest=/etc/httpd/conf/httpd.conf regexp='^(\s*)AddDefaultCharset\s' line='AddDefaultCharset off'
+## ここから .svn などの隠ぺいの設定
+#- name: copy 00-match.conf
+#  copy: src=00-match.conf dest=/etc/httpd/conf.d/00-match.conf owner=root group=root mode=0644
+#
+#############################
+## sslのアクセスログにUSER_AGENT情報追加
+#- name: append to user agent info for ssl access log
+#  lineinfile: dest='/etc/httpd/conf.d/ssl.conf' line='LogFormat "%h %l %u %t \\"%r\\" %>s %b \\"%{Referer}i\\" \\"%{User-Agent}i\\""'
+## main_usernameのユーザシェルの環境変数を設定
+#- name: environmental variable CAKE_ENV_MODE for main_username
+#  lineinfile: dest=/home/{{ main_username }}/.bashrc regexp="^CAKE_ENV_MODE={{ cake_env_mode }}; export CAKE_ENV_MODE$" line="CAKE_ENV_MODE={{ cake_env_mode }}; export CAKE_ENV_MODE"
+##############################
+#
+## ここまで .svn などの隠ぺいの設定
+
+- name: enable httpd
+  service: name=httpd enabled=yes
+  tags: httpd
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+- name: start httpd
+  service: name=httpd state=started
+  tags: httpd
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")

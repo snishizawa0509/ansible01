@@ -1,0 +1,13 @@
+---
+- name: db
+  # Ansible1.9からはsudo/suの代わりにbecomeを使う
+  become: true
+  # dbグループだけにタスクする
+  hosts: db_group
+  user: vagrant
+  vars_files:
+    - vars.yml
+  roles:
+    # - common
+    - postgresql
+    # - aws-cli

@@ -1,0 +1,9 @@
+---
+# ドキュメントルート
+docroot: /var/www/html
+# ドキュメントルートの所有ユーザ名
+main_username: lee
+# 環境変数CAKE_ENV_MODEの設定値
+cake_env_mode: development
+# host名前
+hostname: lee.dev.jp

@@ -1,0 +1,44 @@
+# ========================================================
+# sshd:再起動
+# ========================================================z
+- name: sshd restart
+  service:
+    name: sshd
+    state: restarted
+    enabled: yes
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: sshd
+
+- name: sshd restart
+  systemd:
+    name: sshd
+    state: restarted
+    enabled: yes
+    daemon_reload: yes
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")
+  tags: sshd
+
+# ========================================================
+# firewalled:再起動
+# ========================================================z
+
+- name: iptables save
+  shell: service iptables save warn="false"
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: firewalld
+
+- name: reload iptables
+  service:
+    name: iptables
+    state: restarted
+    enabled: yes
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: firewalld
+
+- name: reload firewalld
+  systemd:
+    name: firewalld
+    state: restarted
+    enabled: yes
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")
+  tags: firewalld

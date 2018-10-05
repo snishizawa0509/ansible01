@@ -1,0 +1,4 @@
+ansible/roles/common/templates/iptables.j2
+ansible/*.retry
+.vagrant
+
