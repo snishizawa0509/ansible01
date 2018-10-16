@@ -1,3 +1,4 @@
 ---
-- name: restart postgresql94
-  service: name=postgresql-9.4 state=restarted
+- name: restart postgresql{{ pg_number }}
+  service: name=postgresql-{{ pg_version }} state=restarted
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")

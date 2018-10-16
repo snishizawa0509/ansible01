@@ -1,4 +1,53 @@
 ---
+# ========================================================
+# postgresバージョン
+# ========================================================z
+pg_version: 9.2
+pg_number: 92
+
+# ========================================================
+# postgresレポジトリURL
+# ========================================================z
+pg_url: https://download.postgresql.org/pub/repos/yum/9.2/redhat/rhel-6-x86_64/pgdg-centos92-9.2-8.noarch.rpm
+
+# ========================================================
 # DBに接続できるネットワーク範囲
+# ========================================================z
 permit_network: 10.0.0.0/8
-dbroot: /var/lib/pgsql/9.4
+dbroot: /var/lib/pgsql/{{ pg_version }}
+
+# ========================================================
+# DBロール
+# ========================================================z
+db_user_name: postgres
+db_user_password: towatech
+
+# ========================================================
+# pg_hba_setting
+# ========================================================z
+network:
+  - type: local
+    db: all
+    user: all
+    address:
+    method: md5
+  - type: host
+    db: all
+    user: all
+    address: 127.0.0.1/32
+    method: md5
+  - type: host
+    db: all
+    user: all
+    address: "{{ ansible_default_ipv4.address }}/32"
+    method: md5
+  - type: host
+    db: all
+    user: all
+    address: ::1/128
+    method: ident
+    #  - type: hostssl
+    #    db: replication
+    #    user: postgres
+    #    address: "{{ ansible_default_ipv4.address }}/32"
+    #    method: trust
