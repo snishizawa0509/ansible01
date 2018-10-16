@@ -1,95 +1,145 @@
 ---
 # ========================================================
-# PostgreSQL9.4のリポジトリをインストール
+# PostgreSQLのリポジトリをインストール
 # ========================================================z
-- name: install PostgreSQL9.4 repository
-  yum: name=http://yum.postgresql.org/9.4/redhat/rhel-7-x86_64/pgdg-centos94-9.4-2.noarch.rpm state=present
-- name: disable PostgreSQL9.4 repository
-  lineinfile: dest=/etc/yum.repos.d/pgdg-94-centos.repo regexp='^enabled=1' line='enabled=0' state=present
+- name: PostgreSQL{{ pg_number }}レポジトリインストール
+  yum:
+    name: "{{ pg_url }}"
+    state: present
+  tags: postgresql
+
+- name: PostgreSQL{{ pg_version }}レポジトリ有効化
+  replace:
+    dest: /etc/yum.repos.d/pgdg-{{pg_number}}-centos.repo
+    regexp: '^enabled=1$'
+    replace: 'enabled=0'
+  tags: postgresql
 
 # ========================================================
-# postgresql94のインストール
+# postgresqlのインストール
 # ========================================================z
-- name: install postgresql94
-  yum: name={{ item }} enablerepo=pgdg94 state=present
+- name: postgresql{{ pg_number }}インストール
+  yum:
+    name: "{{ item }}"
+    enablerepo: pgdg{{ pg_number }}
+    state: present
   with_items:
-  - postgresql94-server
-  - postgresql94-contrib
-  - python-psycopg2
+    - postgresql{{ pg_number }}
+    - postgresql{{ pg_number }}-devel
+    - postgresql{{ pg_number }}-libs
+    - postgresql{{ pg_number }}-server
+  tags: postgresql
 
 # ========================================================
-# データディレクトリを準備
+# データディレクトリを準備//通常はデフォルトpathがすでにある。特定のディレクトリに変えたい場合実行される
 # ========================================================z
 - name: make directory for dbroot 1
   file: path={{ dbroot }} state=directory owner=postgres group=postgres mode=700
+  tags: postgresql
+
 - name: make directory for dbroot 2
   file: path={{ dbroot }}/data state=directory owner=postgres group=postgres mode=700
+  tags: postgresql
+
 - name: make directory for dbroot 3
   file: path={{ dbroot }}/backups state=directory owner=postgres group=postgres mode=700
-- name: copy postgresql-9.4.service
-  template: src=postgresql-9.4.service.j2 dest=/usr/lib/systemd/system/postgresql-9.4.service owner=root group=root mode=0644
+  tags: postgresql
 
-# ========================================================
-# 自動起動の設定
-# ========================================================z
-- name: enable postgresql94
-  service: name=postgresql-9.4 enabled=yes
+  #TODO add service centos6
+  #- name: copy postgresql-{{ pg_version }}.service
+  #  template: src=postgresql-{{ pg_version }}.service.j2 dest=/usr/lib/systemd/system/postgresql-{{ pg_version }}.service owner=root group=root mode=0644
+  #  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")
+  #  tags: postgresql
 
 # ========================================================
 # 設定済みかの確認
 # ========================================================z
-- name: check postgresql.conf
-  command: test -f "{{ dbroot }}/data/postgresql.conf"
+- name: postgresql.confが存在するか判定
+  stat:
+    path: "{{ dbroot }}/data/postgresql.conf"
   register: is_initialized
+  changed_when: false
+  check_mode: no
   ignore_errors: true
+  tags: postgresql
 
 # ========================================================
-# 初期化
+# データベースクラスタ作成
 # ========================================================z
-- name: initdb
-  command: su postgres -c "/usr/pgsql-9.4/bin/initdb --no-locale --encoding=UTF8 -D {{ dbroot }}/data"
-  when: is_initialized|failed
-- name: config pg_hba.conf
+- name: postgres:initdb データベースクラスタ作成
+  shell: /usr/pgsql-{{ pg_version }}/bin/initdb --no-locale --encoding=UTF8 -D {{ dbroot }}/data
+  become: yes
+  become_user: postgres
+  when: not is_initialized.stat.exists
+  tags: postgresql
+
+# ========================================================
+# 設定ファイルをアップロード
+# ========================================================z
+- name: pg_hba.confのアップロード #上書き
   template: src=pg_hba.conf.j2 dest={{ dbroot }}/data/pg_hba.conf
-  when: is_initialized|failed
-- name: config postgresql.conf
-  copy: src=postgresql.conf dest={{ dbroot }}/data/postgresql.conf
-  notify: restart postgresql94
+  when: not is_initialized.stat.exists
+  tags: postgresql
+
+- name: postgresql.confのアップロード #上書きしない
+  copy: src=postgresql.conf dest={{ dbroot }}/data/postgresql.conf follow=yes
+  when: not is_initialized.stat.exists
+  notify: restart postgresql{{ pg_number }}
+  tags: postgresql
+
+- name: postgresql.confの設定 if 9.2
+  replace:
+    dest: "{{ dbroot }}/data/postgresql.conf"
+    regexp: "^dynamic_shared_memory_type = posix"
+    replace: '#dynamic_shared_memory_type = posix'
+  when: (not is_initialized.stat.exists) and pg_version == 9.2
+  tags: postgresql
 
 # ========================================================
-# サービス起動
+# 自動起動設定&起動
 # ========================================================z
-- name: start postgresql94
-  service: name=postgresql-9.4 state=started
+- name: postgresql{{ pg_number }}自動起動設定&起動
+  service: name=postgresql-{{ pg_version }} state=started enabled=yes
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "6")
+  tags: postgresql
 
 # ========================================================
 # postgresユーザのパスワード初期化
 # ========================================================z
-- name: config postgres password
-  command: sudo -u postgres /usr/bin/psql -U postgres -c "ALTER USER {{ db_user_name }} with unencrypted password '{{ db_user_password }}';"
-  when: is_initialized|failed
+- name: postgresロールのパスワード設定
+  shell: /usr/bin/psql -U postgres -c "ALTER USER {{ db_user_name }} with unencrypted password '{{ db_user_password }}';"
+  become: yes
+  become_user: postgres
+  when: not is_initialized.stat.exists
+  tags: postgresql
 
 # ========================================================
-# アクセス方法をmd5に変更して再起動
+# アクセス方法を設定
 # ========================================================z
 - name: config pg_hba.conf
   template: src=pg_hba.conf2.j2 dest={{ dbroot }}/data/pg_hba.conf
-  notify: restart postgresql94
+  when: not is_initialized.stat.exists
+  notify: restart postgresql{{ pg_number }}
+  tags: postgresql
 
-# ========================================================
-# バックアップ設定
-# ========================================================z
-- name: make dir backup
-  file: path=/home/{{ main_username }}/backup state=directory owner={{ main_username }} group={{ main_username }} mode=700
-- name: copy pgpass
-  template: src=pgpass dest=/home/{{ main_username }}/.pgpass owner={{ main_username }} group={{ main_username }} mode=0600
-- name: copy backup sh
-  template: src=backup_all.sh dest=/home/{{ main_username }}/backup_all.sh owner={{ main_username }} group={{ main_username }} mode=0600
-- name: set cron for db backup
-  cron:
-    name: 'db backup'
-    minute: '30'
-    hour:  '5'
-    job: 'source ~/.bash_profile; /bin/sh /home/{{ main_username }}/backup_all.sh;'
-    user: '{{ main_username }}'
-    cron_file: 'backup_all'
+## ========================================================
+## バックアップ設定
+## ========================================================z
+#- name: make dir backup
+#  file: path=/home/{{ main_username }}/backup state=directory owner={{ main_username }} group={{ main_username }} mode=700
+#  tags: postgresql
+#- name: copy pgpass
+#  template: src=pgpass dest=/home/{{ main_username }}/.pgpass owner={{ main_username }} group={{ main_username }} mode=0600
+#  tags: postgresql
+#- name: copy backup sh
+#  template: src=backup_all.sh dest=/home/{{ main_username }}/backup_all.sh owner={{ main_username }} group={{ main_username }} mode=0600
+#  tags: postgresql
+#- name: set cron for db backup
+#  cron:
+#    name: 'db backup'
+#    minute: '30'
+#    hour:  '5'
+#    job: 'source ~/.bash_profile; /bin/sh /home/{{ main_username }}/backup_all.sh;'
+#    user: '{{ main_username }}'
+#    cron_file: 'backup_all'
+#  tags: postgresql

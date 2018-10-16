@@ -59,14 +59,16 @@
   changed_when: false
   check_mode: no
 
-- name: SELinuxのDisableでない場合サーバ再起動
+- name: SELinuxをOFFにする
+  selinux: state=disabled
+
+- name: SELinuxがDisableでない場合サーバ再起動
   shell: sleep 2 && shutdown -r now "サーバ再起動"
   async: 1
   poll: 0
-  #      ignore_errors: true
   when: selinux_result.stdout != "Disabled"
 
-- name: SELinuxのDisableでない場合サーバ再起動待ち
+- name: SELinuxがDisableでない場合サーバ再起動待ち
   local_action: wait_for host={{ inventory_hostname }} port=22 delay=10
   when: selinux_result.stdout != "Disabled"
 
