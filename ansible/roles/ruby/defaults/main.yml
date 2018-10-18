@@ -7,6 +7,13 @@ ruby_version: '1.8.7-p358'
 rails_version: '2.3.18'
 
 # ========================================================
+# gitやsshconfig周り
+# ========================================================z
+r_ssh_setting:
+  - {name: 'github', host: 'github.com', user: 'git', filename: 'deploy'}
+rails_app_repository: 'git@github.com:sample/sample.git'
+
+# ========================================================
 # rubyインストール方法 必要に応じて変更
 # ========================================================z
 ###1:通常rbenv/2:http指定

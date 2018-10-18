@@ -166,3 +166,57 @@
   when: ruby_install.rc == 1
   tags: ruby
 
+  # ========================================================
+  # gitレポジトリを登録
+  # ========================================================z
+- name: create .ssh
+  file: path=~/.ssh state=directory mode=700 follow=yes
+  tags: rails
+- name: check ssh-config
+  stat: path=~/.ssh/config
+  register: sshconfig
+  tags: rails
+- name: create ssh-config
+  file: path=~/.ssh/config state=touch mode=644 follow=yes
+  when: not sshconfig.stat.exists
+  tags: rails
+- name: check repository
+  shell: 'cat ~/.ssh/config'
+  register: repository_check_result
+  changed_when: false
+  tags: rails
+- name: repository Registration
+  blockinfile:
+    dest: ~/.ssh/config
+    content: |
+      Host {{ item.name }}
+          HostName {{ item.host }}
+          identityFile ~/.ssh/{{ item.filename }}
+          User {{ item.user }}
+  when: "'HostName {{ item.name }}' not in repository_check_result.stdout"
+  with_items: "{{ r_ssh_setting }}"
+  tags: rails
+- name: 秘密鍵をアップロード
+  template: src={{ item.filename }}.j2 dest=~/.ssh/{{ item.filename }} mode=600
+  with_items: "{{ r_ssh_setting }}"
+  tags: rails
+
+  # ========================================================
+  # アプリケーションをclone
+  # ========================================================z
+- name: clone rails repository
+  git:
+    repo: '{{ rails_app_repository }}'
+    dest: '{{ documents[0].root }}'
+  tags: rails
+
+  # ========================================================
+  # gem install
+  # ========================================================z
+- name: clone rails repository
+  git:
+    repo: '{{ rails_repository }}'
+    dest: '{{ documents[0].root }}'
+    remote: origin
+    accept_hostkey: yes
+  when: not check_repos.stat.exists
