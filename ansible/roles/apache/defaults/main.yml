@@ -1,18 +1,5 @@
 ---
 # ========================================================
-# ドキュメントルート
-# ========================================================z
-directories:
-    - {root: /var/apps, owner: root}
-    - {root: /var/apps/mall, owner: root}
-    - {root: /var/apps/sh, owner: root}
-    - {root: /var/apps/staging, owner: root}
-    - {root: /var/apps/staging/mall, owner: root}
-documents:
-    - {root: /var/apps/staging/towatech, main_username: apache, cake_env_mode: staging}
-    - {root: /var/apps/towatech, main_username: apache, cake_env_mode: production}
-
-# ========================================================
 # ドキュメントルートの所有ユーザ名
 # ========================================================z
 main_username: lee
@@ -26,10 +13,3 @@ cake_env_mode: development
 # host名前
 # ========================================================z
 hostname: lee.dev.jp
-
-# ========================================================
-# http,httpsIP
-# ========================================================z
-http_port: "80"
-https_port: "443"
-

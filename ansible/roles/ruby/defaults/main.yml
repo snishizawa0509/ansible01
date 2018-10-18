@@ -1,0 +1,45 @@
+# ========================================================
+# パスとバージョン 必要に応じて変更
+# ========================================================z
+#rbenv_root_path: '~/.rbenv'
+rbenv_root_path: '/usr/local/rbenv'
+ruby_version: '1.8.7-p358'
+rails_version: '2.3.18'
+
+# ========================================================
+# gitやsshconfig周り
+# ========================================================z
+r_ssh_setting:
+  - {name: 'github', host: 'github.com', user: 'git', filename: 'deploy'}
+rails_app_repository: 'git@github.com:sample/sample.git'
+
+# ========================================================
+# rubyインストール方法 必要に応じて変更
+# ========================================================z
+###1:通常rbenv/2:http指定
+install_type: 2
+#古いバージョン対応 install_type:2
+ruby_install_url: 'http://ftp.ruby-lang.org/pub/ruby/1.8/ruby-1.8.7-p358.zip'
+
+# ========================================================
+# ruby_yumリスト 必要に応じて変更
+# ========================================================z
+ruby_items:
+  - bzip2
+  - gcc
+  - openssl-devel
+  - readline-devel
+  - zlib-devel
+  - ImageMagick-devel
+  - tk-devel
+
+# ========================================================
+# ruby-1.8.7-p358用のバグ FIX
+# https://web.chaperone.jp/w/index.php?ruby
+# https://bugs.ruby-lang.org/issues/8384
+# ========================================================z
+fix_list:
+  - {dest: '~/ruby-{{ ruby_version }}/ext/openssl/ossl_pkey_ec.c', insertafter: 'method = EC_GFp_nist_method\(\);', line: '#if !defined(OPENSSL_NO_EC2M)'}
+  - {dest: '~/ruby-{{ ruby_version }}/ext/openssl/ossl_pkey_ec.c', insertafter: 'method = EC_GF2m_simple_method\(\);', line: '#endif'}
+  - {dest: '~/ruby-{{ ruby_version }}/ext/openssl/ossl_pkey_ec.c', insertafter: 'new_curve = EC_GROUP_new_curve_GFp;', line: '#if !defined(OPENSSL_NO_EC2M)'}
+  - {dest: '~/ruby-{{ ruby_version }}/ext/openssl/ossl_pkey_ec.c', insertafter: 'new_curve = EC_GROUP_new_curve_GF2m;', line: '#endif'}

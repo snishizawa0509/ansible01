@@ -1,11 +1,14 @@
 # ========================================================
 # rubyが既にインストールされているかを判定
-# 為の確認コマンド
 # ========================================================
 - name: Rubyの存在確認
   shell: which ruby
   register: ruby_install
+  environment:
+    RBENV_ROOT: "{{ rbenv_root_path }}"
+    PATH: "{{ rbenv_root_path }}/bin:{{ env_path }}"
   failed_when: ruby_install.rc not in [0, 1]
+  tags: ruby
 
   # ========================================================
   # 以下のRubyがインストールされている場合は設定しない ruby_install.rc == 0
@@ -15,47 +18,205 @@
   # githubよりrbenv(Rubyの複数バージョン切替)をクローンする
   # ========================================================
 - name: gitからrbenvをクローンする
-  git: repo=https://github.com/sstephenson/rbenv.git dest=~/.rbenv
+  git: repo=https://github.com/sstephenson/rbenv.git dest={{ rbenv_root_path }}
   when: ruby_install.rc == 1
+  tags: ruby
 
   # ========================================================
-  # rbenv init置換する
+  # githubよりruby-buildをクローン
   # ========================================================
-- name: profile_init.sh内のREPLACE_EXECRBENVをrbenv initに置換する
-  replace:  dest=/etc/profile.d/profile_init.sh regexp="^#REPLACE_EXECRBENV" replace='eval "$(rbenv init -)" >/dev/null 2>&1'
+- name: gitからruby-buildをクローンする 1
+  file: path={{ rbenv_root_path }}/plugins state=directory owner=root group=root mode=0755
   when: ruby_install.rc == 1
+  tags: ruby
+
+- name: gitからruby-buildをクローンする 2
+  git: repo=https://github.com/sstephenson/ruby-build.git dest={{ rbenv_root_path }}/plugins/ruby-build
+  when: ruby_install.rc == 1
+  tags: ruby
 
   # ========================================================
-  # profile_init.shを再読み込み
+  # 初期化設定
+  # ========================================================
+- name: rbenv初期設定
+  template:
+    src: rbenv_system.sh.j2
+    dest: /etc/profile.d/rbenv.sh
+    owner: root
+    group: root
+    mode: 0755
+  when: ruby_install.rc == 1
+  tags: ruby
+
+  # ========================================================
+  # shを再読み込み
   # ========================================================
 - name: bashの実行
-  shell: /etc/profile.d/profile_init.sh
+  shell: /etc/profile.d/rbenv.sh
   when: ruby_install.rc == 1
+  tags: ruby
 
   # ========================================================
-  # ruby 2.1.8バージョンをインストールする
+  # rubyのインストールに必要なパッケージをインストール
   # ========================================================z
-- name: 2.1.8のインストール
-  command: rbenv install 2.1.8
+- name: rubyのインストールに必要なパッケージをインストール
+  yum: name={{ item }} state=present
+  with_items: '{{ruby_items}}'
   when: ruby_install.rc == 1
+  tags: ruby
+
+  # ========================================================
+  # ruby バージョンをインストールする
+  # ========================================================z
+- name: '{{ ruby_version }}のインストール type1'
+  shell: rbenv install {{ ruby_version }}
+  environment:
+    RBENV_ROOT: "{{ rbenv_root_path }}"
+    PATH: "{{ rbenv_root_path }}/bin:{{ env_path }}"
+  when: ruby_install.rc == 1 and install_type == 1
+  tags: ruby
+
+  # ========================================================
+  # ruby バージョンをインストールする: 古いバージョン対応
+  # ========================================================z
+- name: '{{ ruby_version }}のインストール type2 zipダウンロード'
+  get_url:
+    dest: ~/get_ruby.zip
+    url: "{{ ruby_install_url }}"
+  when: ruby_install.rc == 1 and install_type == 2
+  tags: ruby
+
+- name: '{{ ruby_version }}のインストール type2 解凍'
+  unarchive:
+    dest: ~/
+    src: ~/get_ruby.zip
+    remote_src: yes
+  when: ruby_install.rc == 1 and install_type == 2
+  tags: ruby
+
+- name: '{{ ruby_version }}のインストール type2 bug_fix'
+  lineinfile:
+    dest: '{{ item.dest }}'
+    insertafter: '{{ item.insertafter }}'
+    line: '{{ item.line }}'
+  with_items: '{{ fix_list }}'
+  when: ruby_install.rc == 1 and install_type == 2 and ruby_version == '1.8.7-p358'
+  tags: ruby
+
+- name: '{{ ruby_version }}のインストール type2 コンパイル'
+  shell: 'cd ~/ruby-{{ ruby_version }}/ ; ./configure --prefix={{ rbenv_root_path }}/versions/{{ ruby_version }}'
+  when: ruby_install.rc == 1 and install_type == 2
+  tags: ruby
+
+- name: '{{ ruby_version }}のインストール type2 make'
+  shell: 'cd ~/ruby-{{ ruby_version }}/ ; make'
+  when: ruby_install.rc == 1 and install_type == 2
+  tags: ruby
+
+- name: '{{ ruby_version }}のインストール type2 make test'
+  shell: 'cd ~/ruby-{{ ruby_version }}/ ; make test'
+  when: ruby_install.rc == 1 and install_type == 2
+  tags: ruby
+
+- name: '{{ ruby_version }}のインストール type2 make install'
+  shell: 'cd ~/ruby-{{ ruby_version }}/ ; make install'
+  when: ruby_install.rc == 1 and install_type == 2
+  tags: ruby
+
+- name: '{{ ruby_version }}のインストール type2 ゴミ整理'
+  file:
+    path: ~/{{ item }}
+    state: absent
+  with_items:
+    - get_ruby.zip
+    - 'ruby-{{ ruby_version }}'
+  when: ruby_install.rc == 1 and install_type == 2
+  tags: ruby
 
   # ========================================================
   # rbenv rehashを行う
   # ========================================================z
 - name: rehashを行う
-  command: rbenv rehash
+  shell: rbenv rehash
+  environment:
+    RBENV_ROOT: "{{ rbenv_root_path }}"
+    PATH: "{{ rbenv_root_path }}/bin:{{ env_path }}"
   when: ruby_install.rc == 1
+  tags: ruby
 
   # ========================================================
-  # ruby 2.1.8をデフォルトに設定
+  # ruby version をデフォルトに設定
   # ========================================================z
-- name: 2.1.8をデフォルトに設定
-  command: rbenv global 2.1.8
+- name: '{{ ruby_version }}をデフォルトに設定'
+  shell: rbenv global {{ ruby_version }}
+  environment:
+    RBENV_ROOT: "{{ rbenv_root_path }}"
+    PATH: "{{ rbenv_root_path }}/bin:{{ env_path }}"
   when: ruby_install.rc == 1
+  tags: ruby
 
   # ========================================================
   # rbenv rehashを行う
   # ========================================================z
 - name: rehashを行う
-  command: rbenv rehash
+  shell: rbenv rehash
+  environment:
+    RBENV_ROOT: "{{ rbenv_root_path }}"
+    PATH: "{{ rbenv_root_path }}/bin:{{ env_path }}"
   when: ruby_install.rc == 1
+  tags: ruby
+
+  # ========================================================
+  # gitレポジトリを登録
+  # ========================================================z
+- name: create .ssh
+  file: path=~/.ssh state=directory mode=700 follow=yes
+  tags: rails
+- name: check ssh-config
+  stat: path=~/.ssh/config
+  register: sshconfig
+  tags: rails
+- name: create ssh-config
+  file: path=~/.ssh/config state=touch mode=644 follow=yes
+  when: not sshconfig.stat.exists
+  tags: rails
+- name: check repository
+  shell: 'cat ~/.ssh/config'
+  register: repository_check_result
+  changed_when: false
+  tags: rails
+- name: repository Registration
+  blockinfile:
+    dest: ~/.ssh/config
+    content: |
+      Host {{ item.name }}
+          HostName {{ item.host }}
+          identityFile ~/.ssh/{{ item.filename }}
+          User {{ item.user }}
+  when: "'HostName {{ item.name }}' not in repository_check_result.stdout"
+  with_items: "{{ r_ssh_setting }}"
+  tags: rails
+- name: 秘密鍵をアップロード
+  template: src={{ item.filename }}.j2 dest=~/.ssh/{{ item.filename }} mode=600
+  with_items: "{{ r_ssh_setting }}"
+  tags: rails
+
+  # ========================================================
+  # アプリケーションをclone
+  # ========================================================z
+- name: clone rails repository
+  git:
+    repo: '{{ rails_app_repository }}'
+    dest: '{{ documents[0].root }}'
+  tags: rails
+
+  # ========================================================
+  # gem install
+  # ========================================================z
+- name: clone rails repository
+  git:
+    repo: '{{ rails_repository }}'
+    dest: '{{ documents[0].root }}'
+    remote: origin
+    accept_hostkey: yes
+  when: not check_repos.stat.exists
